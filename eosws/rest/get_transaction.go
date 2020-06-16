@@ -19,11 +19,13 @@ import (
 	"net/url"
 
 	"github.com/dfuse-io/derr"
-	"github.com/dfuse-io/dmetering"
 	"github.com/dfuse-io/dfuse-eosio/eosws"
 	"github.com/dfuse-io/dfuse-eosio/eosws/mdl"
+	"github.com/dfuse-io/dmetering"
+	"github.com/dfuse-io/logging"
 	"github.com/dfuse-io/validator"
 	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 )
 
 func GetTransactionHandler(db eosws.DB) http.Handler {
@@ -56,6 +58,12 @@ func GetTransactionHandler(db eosws.DB) http.Handler {
 		transaction, err := db.GetTransaction(r.Context(), request.TransactionID)
 		if err != nil {
 			eosws.WriteError(w, r, derr.Wrap(err, "failed to get transaction"))
+			return
+		}
+
+		if transaction == nil {
+			logging.Logger(ctx, zlog).Error("transaction was nil and there is no error, this is not expected", zap.String("transaction_id", request.TransactionID))
+			eosws.WriteError(w, r, derr.Wrap(err, "unable to find transaction"))
 			return
 		}
 

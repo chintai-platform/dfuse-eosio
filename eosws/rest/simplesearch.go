@@ -22,12 +22,14 @@ import (
 	"strings"
 
 	"github.com/araddon/dateparse"
-	pbblockmeta "github.com/dfuse-io/pbgo/dfuse/blockmeta/v1"
 	"github.com/dfuse-io/derr"
-	"github.com/dfuse-io/dmetering"
-	"github.com/eoscanada/eos-go"
 	"github.com/dfuse-io/dfuse-eosio/eosws"
 	"github.com/dfuse-io/dfuse-eosio/eosws/mdl"
+	"github.com/dfuse-io/dmetering"
+	"github.com/dfuse-io/logging"
+	pbblockmeta "github.com/dfuse-io/pbgo/dfuse/blockmeta/v1"
+	"github.com/eoscanada/eos-go"
+	"go.uber.org/zap"
 )
 
 func SimpleSearchHandler(db eosws.DB, blockmetaClient *pbblockmeta.Client) http.Handler {
@@ -78,22 +80,28 @@ func SimpleSearchHandler(db eosws.DB, blockmetaClient *pbblockmeta.Client) http.
 
 			txResp, err := db.GetTransaction(ctx, lQuery)
 			if err == nil {
-				eosws.WriteJSON(w, r, map[string]interface{}{
-					"type": "transaction",
-					"data": txResp,
-				})
-				//////////////////////////////////////////////////////////////////////
-				// Billable event on REST API endpoint
-				// WARNING: Ingress / Egress bytess is taken care by the middleware
-				//////////////////////////////////////////////////////////////////////
-				dmetering.EmitWithContext(dmetering.Event{
-					Source:         "eosws",
-					Kind:           "REST API - eosq",
-					Method:         "/v0/simple_search",
-					RequestsCount:  1,
-					ResponsesCount: 1,
-				}, ctx)
-				//////////////////////////////////////////////////////////////////////
+				if txResp != nil {
+					eosws.WriteJSON(w, r, map[string]interface{}{
+						"type": "transaction",
+						"data": txResp,
+					})
+					//////////////////////////////////////////////////////////////////////
+					// Billable event on REST API endpoint
+					// WARNING: Ingress / Egress bytess is taken care by the middleware
+					//////////////////////////////////////////////////////////////////////
+					dmetering.EmitWithContext(dmetering.Event{
+						Source:         "eosws",
+						Kind:           "REST API - eosq",
+						Method:         "/v0/simple_search",
+						RequestsCount:  1,
+						ResponsesCount: 1,
+					}, ctx)
+					//////////////////////////////////////////////////////////////////////
+					return
+				}
+
+				logging.Logger(ctx, zlog).Error("transaction was nil and there is no error, this is not expected", zap.String("transaction_id", lQuery))
+				eosws.WriteError(w, r, derr.HTTPNotFoundError(ctx, nil, derr.C("simple_search_not_found"), "no results found for query"))
 				return
 			}
 		}
